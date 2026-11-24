@@ -118,6 +118,28 @@ class BaseModuleService:
                 written += 1
         return written
 
+    def _dump_jsonl(self, filepath: Path, records: list[dict[str, Any]]) -> int:
+        """将记录列表以JSONL格式覆盖写入指定文件（用于不可变版本产物），返回写入条数。"""
+        _ensure_dir(filepath.parent)
+        with open(filepath, "w", encoding="utf-8") as f:
+            for rec in records:
+                f.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
+        return len(records)
+
+    def _write_json(self, filepath: Path, data: dict[str, Any]) -> Path:
+        """将字典以JSON格式覆盖写入指定路径，返回路径。"""
+        _ensure_dir(filepath.parent)
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2, default=str)
+        return filepath
+
+    def _read_json(self, filepath: Path) -> dict[str, Any] | None:
+        """读取JSON文件，不存在时返回None。"""
+        if not filepath.exists():
+            return None
+        with open(filepath, "r", encoding="utf-8") as f:
+            return json.load(f)
+
     def _read_jsonl(self, filepath: Path) -> list[dict[str, Any]]:
         """从JSONL文件读取全部记录并返回字典列表。"""
         if not filepath.exists():

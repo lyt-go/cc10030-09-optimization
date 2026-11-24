@@ -77,5 +77,35 @@ npm run dev
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
 
+## 纠偏重建工作流（坐标标准化 × 网格索引）
+
+接收坐标纠偏数据后的重建与发布稳定性由 `app/routers/workflow.py` 暴露，
+业务约束全部落在 `coord_transform` 与 `grid_index` 两个领域服务：
+
+1. **逐点变更清单**：`POST /api/workflow/coord/{batch}/transform` 除转换数据集外，
+   生成 `data/coord_manifests/{batch}_manifest.json`，逐点记录原始观测、新旧坐标、
+   采用规则（规则编号/版本/源/目标坐标系）、移动距离与复核状态；换过坐标的观测默认
+   「待复核」，未变化的自动「已确认」。
+2. **新旧范围独立核验**：清单分别给出新旧坐标的经纬度边界与 SHA256 校验值，
+   `POST /api/workflow/coord/{batch}/verify-ranges` 重算原始点与转换结果独立比对，
+   篡改清单会被检出。
+3. **区域复核**：`POST .../regions/{region}/confirm` 按区域放行，
+   `GET .../pending-review?region=` 查看待复核点，`POST .../review` 逐点登记结论。
+4. **区域版本化重建**：`POST /api/workflow/grid/{batch}/regions/{region}/rebuild`
+   只采用「已确认」观测，版本状态流转为
+   `待重建 → 待复核 → 正式可读`（可驳回重建）；待复核分区禁止发布为正式可读。
+   同一区域存在多套来源规则时拒绝建版，禁止新旧坐标混算同一个点；每个网格都带
+   `source_rule` 与逐点 `point_rules` 来源标注。
+5. **旧版保留与回滚**：发布新版时旧正式版转为「已归档」，文件完整保留，
+   `POST .../rollback` 可恢复为正式可读。
+6. **旧格→新格差额**：版本元数据 `diff_from_active` 基于点的实际移动给出每格
+   撤销（withdraw）/补入（add_in）计数与逐点 `point_moves`，
+   `GET .../diff` 供下游对已交接粗格计数做撤销或补入。
+7. **切换中途查询**：`POST .../switch-query` 返回各区域当前正式版本、
+   `valid_from/valid_to` 有效时间区间与是否可用于汇总；
+   `GET .../coarse-grid/{geohash}/observations` 返回原粗格按采用坐标回算所需观测。
+
+版本产物目录：`data/grid_versions/{batch}/{region}/`（`versions.json` 目录 + 每版一个 JSONL）。
+
 领域：数据工程
 子方向：数据分析与数据应用
